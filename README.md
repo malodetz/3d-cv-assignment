@@ -3,10 +3,11 @@
 ### Разработка простейшей системы помощи водителю
 
 1. Скачайте датасет NuScenes Mini (https://www.nuscenes.org/nuscenes)
-   Для этого перейдите на вкладку Downloads, зарегистрируйтесь и скачайте Mini часть в разделе Full dataset.
-   <img src="./download_window.png" alt="Окно со чкачиванием" style="zoom:50%;" />
 
-   Изучите информацию о датасете, представленную на сайте, а также приложенный ноутбук, демонстрирующий принципы работы с датасетом.
+   Для этого перейдите на вкладку Downloads, зарегистрируйтесь и скачайте Mini часть в разделе Full dataset.
+   <img src="./download_window.png" alt="Окно со cкачиванием" style="zoom:40%;" />
+
+   Изучите информацию о датасете, представленную на сайте, а также приложенный [ноутбук](./nuscenes_dataset.ipynb), демонстрирующий принципы работы с датасетом, необходимые для выполнения задания, и как можно считывать данные.
 
 2. Выберите оттуда одну из понравившихся дорожных сцен, и реализуйте для нее алгоритм, вычисляющий расстояние от ego vehicle до окружающих его движущихся объектов, по данным камеры и лидара.
 
@@ -16,50 +17,6 @@
    - Спроецируйте лидарное облако точек на изображение с камеры. Код, осуществляющий проекцию, должен быть написан самостоятельно, а не просто откуда-то импортирован, разрешается использовать numpy/torch для матричных операций и scipy/pyquaternion для работы с углами.
    - Для каждого обнаруженного объекта оцените расстояние от ego vehicle до него по лидарным точкам, попавшим внутрь соответствующего бокса.
 
-<details>
-<summary> <b>Для чтения и визуализации лидарного облака точек можно воспользоваться функциями:</b> </summary>
-
-```python
-import plotly.graph_objects as go
-import numpy as np
-
-def read_lidar_pointcloud(file_path):
-   scan = np.fromfile(file_path, dtype=np.float32)
-   points = scan.reshape((-1, 5))[:, :4]
-   return points
-
-def show_lidar_pointcloud(points):
-   """
-   Visualize lidar point cloud interactively in 3D.
-
-   Parameters:
-       points (numpy.ndarray): Nx3 or Nx4 array of lidar points (X, Y, Z, [Reflectance])
-   """
-   if points.shape[1] == 4:  # use reflectance as color
-       color = points[:, 3]
-   else:
-       color = points[:, 2]  # color scale based on height
-
-   fig = go.Figure(
-       data=[
-           go.Scatter3d(
-               x=points[:, 0],
-               y=points[:, 1],
-               z=points[:, 2],
-               mode='markers',
-               marker=dict(size=2, color=color, colorscale='Viridis', opacity=0.8)
-           )
-       ]
-   )
-
-   fig.update_layout(
-       title="Lidar Point Cloud",
-       scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z", aspectmode="auto")
-   )
-
-   fig.show()
-```
-</details>
 
 3. Соберите полученные результаты в демо-видео, на котором должны присутствовать изображение с камеры, найденные объекты, спроецированные лидарные точки, попавшие внутрь боксов объектов, полученные расстояния для найденных объектов, для каждого кадра выбранной сцены.
    Пример (https://github.com/thegoldenbeetle/3d-cv-assignment/blob/master/output.gif):

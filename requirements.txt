@@ -1,0 +1,6 @@
+nuscenes-devkit==1.1.*
+opencv-python == 4.11.*
+numpy==1.26.*
+matplotlib==3.5.*
+plotly==6.0.*
+pyquaternion==0.9.*

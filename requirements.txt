@@ -7,3 +7,5 @@ pyquaternion==0.9.*
 ultralytics==8.2.*
 scipy==1.13.*
 tqdm==4.66.*
+black
+isort

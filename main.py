@@ -6,6 +6,7 @@ from nuscenes import NuScenes
 from pyquaternion import Quaternion
 from ultralytics import YOLO
 
+
 class LidarProjector:
     def __init__(self, nusc, sample_data):
         self.calibrated_sensor = nusc.get(
@@ -20,36 +21,36 @@ class LidarProjector:
         self.ego_translation = np.array(self.ego_pose["translation"])
 
     def project(self, points):
-        # Transform from global to ego vehicle coordinates
         points = points - self.ego_translation
         rotated_points_ego = np.array(
             [self.ego_rotation.inverse.rotate(point) for point in points]
         )
-
-        # Transform from ego vehicle to camera coordinates
         points_cam = rotated_points_ego - self.sensor_translation
-        # Use correct rotation direction (not inverse)
         rotated_points_sensor = np.array(
             [self.sensor_rotation.rotate(point) for point in points_cam]
         )
-
-        # Filter points in front of the camera (positive z-axis in camera coordinates)
         valid_points = rotated_points_sensor[rotated_points_sensor[:, 2] > 0]
-        if valid_points.shape[0] == 0:  # Check if any points are left after filtering
-            return np.empty((0, 2), dtype=int)  # Return empty array if no points
-
-        # Project 3D points to 2D image plane
+        if valid_points.shape[0] == 0:
+            return np.empty((0, 2), dtype=int)
         projected = self.intrinsic @ valid_points.T
         projected = projected / projected[2, :]
         return projected[:2].T.astype(int)
 
 
-class NuScenesProcessor:
+class MultiCamProcessor:
     def __init__(self, dataroot="./v1.0-mini"):
         self.nusc = NuScenes(version="v1.0-mini", dataroot=dataroot)
-        self.model = YOLO("yolo11n.pt")
+        self.model = YOLO("yolov11x.pt")
+        self.cameras = [
+            "CAM_FRONT",
+            "CAM_FRONT_LEFT",
+            "CAM_FRONT_RIGHT",
+            "CAM_BACK",
+            "CAM_BACK_LEFT",
+            "CAM_BACK_RIGHT",
+        ]
 
-    def process_scene(self, scene_index=0):
+    def create_video_grid(self, scene_index=0):
         scene = self.nusc.scene[scene_index]
         samples = [
             sample["token"]
@@ -57,60 +58,50 @@ class NuScenesProcessor:
             if sample["scene_token"] == scene["token"]
         ]
 
-        # Initialize video
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        out = cv2.VideoWriter("output.mp4", fourcc, 2, (1600, 900))
+        out = cv2.VideoWriter("multi_cam_output.mp4", fourcc, 2, (4800, 1800))
 
-        for sample_token in tqdm(samples):
-            # Get camera and lidar data
-            sample_info = self.nusc.get("sample", sample_token)
-            cam_data = self.nusc.get("sample_data", sample_info["data"]["CAM_FRONT"])
-            lidar_data = self.nusc.get("sample_data", sample_info["data"]["LIDAR_TOP"])
+        for sample in tqdm(samples):
+            frames = []
+            for cam in self.cameras:
+                img = self.process_camera(sample, cam)
+                frames.append(cv2.resize(img, (1600, 900)))
 
-            # Process image
-            img = self.load_image(cam_data)
-            detections = self.detect_objects(img)
-
-            # Load LiDAR points
-            lidar_points = self.load_lidar(lidar_data)
-
-            # Get LiDAR calibration and pose data
-            lidar_calibrated = self.nusc.get(
-                "calibrated_sensor", lidar_data["calibrated_sensor_token"]
-            )
-            lidar_ego_pose = self.nusc.get("ego_pose", lidar_data["ego_pose_token"])
-
-            # Transform LiDAR points to ego vehicle coordinates
-            lidar_rotation = Quaternion(lidar_calibrated["rotation"])
-            lidar_translation = np.array(lidar_calibrated["translation"])
-            points_ego = np.array(
-                [
-                    lidar_rotation.rotate(point[:3]) + lidar_translation
-                    for point in lidar_points
-                ]
-            )
-
-            # Transform from ego to global coordinates
-            ego_rotation = Quaternion(lidar_ego_pose["rotation"])
-            ego_translation = np.array(lidar_ego_pose["translation"])
-            points_global = np.array(
-                [ego_rotation.rotate(point) + ego_translation for point in points_ego]
-            )
-
-            # Project LiDAR points to camera image
-            projector = LidarProjector(self.nusc, cam_data)
-            projected = projector.project(points_global)
-
-            # Filter points inside the image
-            valid_points = self.filter_points(img.shape, projected)
-
-            # Draw results
-            img = self.draw_results(
-                img, detections, valid_points, projected, points_global
-            )
-            out.write(img)
+            grid = np.vstack([np.hstack(frames[:3]), np.hstack(frames[3:])])
+            out.write(cv2.resize(grid, (4800, 1800)))
 
         out.release()
+
+    def process_camera(self, sample_token, camera):
+        sample_info = self.nusc.get("sample", sample_token)
+        cam_data = self.nusc.get("sample_data", sample_info["data"][camera])
+        lidar_data = self.nusc.get("sample_data", sample_info["data"]["LIDAR_TOP"])
+        img = self.load_image(cam_data)
+        detections = self.detect_objects(img)
+
+        lidar_points = self.load_lidar(lidar_data)
+        lidar_calibrated = self.nusc.get(
+            "calibrated_sensor", lidar_data["calibrated_sensor_token"]
+        )
+        lidar_ego_pose = self.nusc.get("ego_pose", lidar_data["ego_pose_token"])
+        lidar_rotation = Quaternion(lidar_calibrated["rotation"])
+        lidar_translation = np.array(lidar_calibrated["translation"])
+        points_ego = np.array(
+            [
+                lidar_rotation.rotate(point[:3]) + lidar_translation
+                for point in lidar_points
+            ]
+        )
+        ego_rotation = Quaternion(lidar_ego_pose["rotation"])
+        ego_translation = np.array(lidar_ego_pose["translation"])
+        points_global = np.array(
+            [ego_rotation.rotate(point) + ego_translation for point in points_ego]
+        )
+        projector = LidarProjector(self.nusc, cam_data)
+        projected = projector.project(points_global)
+        valid_points = self.filter_points(img.shape, projected)
+
+        return self.draw_results(img, detections, valid_points, points_global)
 
     def load_image(self, sample_data):
         path = os.path.join(self.nusc.dataroot, sample_data["filename"])
@@ -140,40 +131,26 @@ class NuScenesProcessor:
         )
         return points[mask]
 
-    def draw_results(self, img, detections, points, projected, original_3d_points):
+    def draw_results(self, img, detections, points, original_3d_points):
         img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-
-        # Create detection boxes structure
         det_boxes = [(det["box"].astype(int), det["cls"]) for det in detections]
-
-        # Create point mapping and filter points in boxes
         points_in_any_box = set()
         point_box_mapping = {}
-
-        # First pass: Find all points in any detection box
         for p_idx, p in enumerate(points):
             for box_idx, (box, _) in enumerate(det_boxes):
                 x1, y1, x2, y2 = box
                 if x1 <= p[0] <= x2 and y1 <= p[1] <= y2:
                     points_in_any_box.add(p_idx)
                     point_box_mapping.setdefault(p_idx, []).append(box_idx)
-                    break  # No need to check other boxes once matched
-
-        # Draw LiDAR points (only those in boxes)
+                    break
         for p_idx in points_in_any_box:
             cv2.circle(img, tuple(points[p_idx]), 2, (0, 255, 0), -1)
-
-        # Draw detections and calculate distances
         for det_idx, (box, cls) in enumerate(det_boxes):
             x1, y1, x2, y2 = box
             associated_points = []
-
-            # Find points specifically in this box
             for p_idx in points_in_any_box:
                 if det_idx in point_box_mapping.get(p_idx, []):
                     associated_points.append(original_3d_points[p_idx])
-
-            # Draw detection info
             if associated_points:
                 distances = [np.linalg.norm(p) for p in associated_points]
                 median_dist = np.median(distances)
@@ -192,5 +169,5 @@ class NuScenesProcessor:
 
 
 if __name__ == "__main__":
-    processor = NuScenesProcessor()
-    processor.process_scene()
+    processor = MultiCamProcessor()
+    processor.create_video_grid()

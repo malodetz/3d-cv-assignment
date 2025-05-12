@@ -4,7 +4,7 @@ numpy==1.26.*
 matplotlib==3.5.*
 plotly==6.0.*
 pyquaternion==0.9.*
-ultralytics==8.2.*
+ultralytics==8.3.133
 scipy==1.13.*
 tqdm==4.66.*
 black

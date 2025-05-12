@@ -40,7 +40,7 @@ class LidarProjector:
 class MultiCamProcessor:
     def __init__(self, dataroot="./v1.0-mini"):
         self.nusc = NuScenes(version="v1.0-mini", dataroot=dataroot)
-        self.model = YOLO("yolov11x.pt")
+        self.model = YOLO("yolo11x.pt")
         self.cameras = [
             "CAM_FRONT",
             "CAM_FRONT_LEFT",

@@ -3,4 +3,4 @@
 Запуск
 1. `pip install -r requirements`
 2. `python main.py`
-3. Результат в `output.mp4`
+3. Результат в `multi_cam_output.mp4`
